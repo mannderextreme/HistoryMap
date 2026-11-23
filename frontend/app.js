@@ -1,19 +1,23 @@
 /**
- * HistoryMaP Frontend Application - FIXED VERSION
- * Handles interactive map and historical events display with proper period tab navigation
+ * HistoryMaP Frontend Application - MAP VERSION
+ * Enhanced with Leaflet.js world map and historical events display
  */
 
 const API_BASE = 'http://localhost:8000/api';
 
-// State variables for period navigation
+// State variables
 let currentLocationIndex = 0;
 let currentPeriodKey = 'ancient';
+let map, mapMarker, mapBounds;
+let locations = [];
+let isMapView = true; // Start in map view by default
 
 // Event listeners setup
 document.addEventListener('DOMContentLoaded', () => {
     initSearch();
-    initMapGrid();
+    initMap();
     initTabNavigation();
+    loadAndDisplayPeriod();
 });
 
 /**
@@ -24,46 +28,208 @@ function initSearch() {
     
     if (!searchInput) return;
     
-    searchInput.addEventListener('input', (e) => {
+    searchInput.addEventListener('input', async (e) => {
         const query = e.target.value.toLowerCase();
         
-        // Filter location cards by name
-        document.querySelectorAll('.location-card').forEach(card => {
-            const cardName = card.querySelector('h3').textContent.toLowerCase();
-            if (cardName.includes(query)) {
-                card.style.display = 'block';
-            } else if (!query) {
-                card.style.display = 'block';
-            }
-        });
+        if (!query) {
+            // Show all locations on clear
+            await displayAllLocations();
+            return;
+        }
+        
+        // Filter locations by name
+        const filtered = locations.filter(loc => 
+            loc.name.toLowerCase().includes(query)
+        );
+        
+        if (filtered.length > 0) {
+            // Center map on first match and show in cards too
+            updateMapView(filtered[0], filtered);
+            displayLocationCards(filtered);
+        } else {
+            document.getElementById('facts-list').innerHTML = 
+                '<li class="no-results">No locations found matching "' + escapeHtml(query) + '"</li>';
+            document.querySelectorAll('.location-card').forEach(card => {
+                card.style.display = 'none';
+            });
+        }
     });
 }
 
 /**
- * Initialize map grid with all locations
+ * Initialize Leaflet map
  */
-async function initMapGrid() {
+function initMap() {
+    try {
+        // Check if window.L is available (Leaflet loaded)
+        if (!window.L) {
+            console.error('Leaflet.js not loaded');
+            showGridFallback();
+            return;
+        }
+        
+        // Create map centered on world
+        const defaultCenter = [48, 10];
+        const defaultZoom = 3;
+        
+        map = L.map('world-map', {
+            center: defaultCenter,
+            zoom: defaultZoom,
+            zoomControl: true,
+            scrollWheelZoom: true,
+            doubleClickZoom: false,
+            dragging: true,
+            attributionControl: true
+        });
+        
+        // Add OpenStreetMap tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+        
+        // Set initial bounds to show all locations
+        updateMapView(getLocalEvents()[0], getLocalEvents());
+        
+    } catch (error) {
+        console.error('Failed to initialize map:', error);
+        showGridFallback();
+    }
+}
+
+/**
+ * Update map view with location markers
+ */
+async function updateMapView(location, allLocations) {
+    if (!map) {
+        console.warn('Map not initialized');
+        return;
+    }
+    
+    // Clear existing marker
+    if (mapMarker) {
+        map.removeLayer(mapMarker);
+    }
+    
+    const locData = location || getLocalEvents()[0] || {};
+    const lat = locData.location?.latitude || 48;
+    const lng = locData.location?.longitude || 10;
+    
+    // Add marker with location info
+    mapMarker = L.marker([lat, lng])
+        .addTo(map)
+        .bindPopup(`<b>${escapeHtml(locData.name)}</b><br>Historical events explorer`)
+        .openPopup();
+    
+    // Fly to location
+    map.flyTo([lat, lng], 6, {
+        animate: true,
+        duration: 1.5
+    });
+    
+    // Store locations for card display fallback
+    locations = allLocations || getLocalEvents();
+    
+    // Display cards below map (optional)
+    displayLocationCards(locations);
+}
+
+/**
+ * Display all locations on map when search is cleared
+ */
+async function displayAllLocations() {
+    if (!map) return;
+    
+    locations = await fetchLocationsFromAPI();
+    const event = getCurrentEvent();
+    
+    // Clear marker and fly to selected location
+    if (mapMarker) {
+        map.removeLayer(mapMarker);
+        mapMarker = null;
+    }
+    
+    mapBounds = L.latLngBounds(locations.map(loc => loc.location));
+    map.fitBounds(mapBounds, { padding: [50, 50] });
+    
+    // Add markers for all locations
+    locations.forEach((loc, index) => {
+        const marker = L.marker([loc.location.latitude, loc.location.longitude])
+            .addTo(map)
+            .bindPopup(`
+                <b>${escapeHtml(loc.name)}</b><br>
+                Click to select this location.
+            `)
+            .on('click', () => {
+                map.flyTo([loc.location.latitude, loc.location.longitude], 6);
+                currentLocationIndex = index;
+                loadAndDisplayPeriod();
+            });
+    });
+}
+
+/**
+ * Show grid fallback if map fails to initialize
+ */
+function showGridFallback() {
+    const mapContainer = document.getElementById('world-map');
+    const cardsContainer = document.getElementById('location-cards');
+    
+    if (mapContainer) {
+        mapContainer.innerHTML = '<div class="world-grid" id="world-grid"></div>';
+    }
+    
+    if (cardsContainer) {
+        cardsContainer.id = 'world-grid';
+        // Use original grid rendering
+        const events = getLocalEvents();
+        renderLocationCards(events);
+    }
+}
+
+/**
+ * Fetch locations from API with geographical data
+ */
+async function fetchLocationsFromAPI() {
     try {
         const response = await fetch(`${API_BASE}/events`);
         if (!response.ok) throw new Error('Failed to fetch events');
         
         const events = await response.json();
-        
-        renderLocationCards(events);
+        return extractLocationData(events);
     } catch (error) {
-        console.error('Failed to load events:', error);
-        // Fallback: display static cards with actual data from memory files
-        const locations = getLocalEvents();
-        renderLocationCards(locations);
+        console.error('API fallback:', error);
+        return getLocalEvents();
     }
 }
 
 /**
- * Render location cards in grid
+ * Extract geographical data from API response
+ */
+function extractLocationData(events) {
+    // Map API response to location objects with coordinates
+    return events.map(event => ({
+        name: event.name,
+        location: event.location || { latitude: 48, longitude: 10 },
+        periods: event.periods || {}
+    }));
+}
+
+/**
+ * Render original grid cards as fallback
  */
 function renderLocationCards(events) {
-    const grid = document.getElementById('world-grid');
+    const grid = document.getElementById('world-grid') || 
+                   document.getElementById('location-cards');
+    
     if (!grid) return;
+    
+    // Hide map section when in grid view
+    const mapContainer = document.getElementById('world-map');
+    if (mapContainer && map) {
+        map.remove();
+        map = null;
+    }
     
     grid.innerHTML = events.map((event, index) => `
         <div class="location-card" data-index="${index}" onclick="selectLocation(${index})">
@@ -76,7 +242,31 @@ function renderLocationCards(events) {
         </div>
     `).join('');
     
-    // Add click event listeners to new cards
+    document.querySelectorAll('.location-card').forEach((card, index) => {
+        card.addEventListener('click', () => selectLocation(index));
+    });
+}
+
+/**
+ * Display location cards below map
+ */
+function displayLocationCards(locationsToDisplay) {
+    const cardsContainer = document.getElementById('world-grid') || 
+                          document.getElementById('location-cards');
+    
+    if (!cardsContainer) return;
+    
+    cardsContainer.innerHTML = locationsToDisplay.map((event, index) => `
+        <div class="location-card" data-index="${index}" onclick="selectLocation(${index})">
+            <h3>${escapeHtml(event.name)}</h3>
+            <div class="period-badges">
+                <span class="period-badge">${getPeriodTitle('ancient')}</span>
+                <span class="period-badge">${getPeriodTitle('medieval')}</span>
+                <span class="period-badge">${getPeriodTitle('modern')}</span>
+            </div>
+        </div>
+    `).join('');
+    
     document.querySelectorAll('.location-card').forEach((card, index) => {
         card.addEventListener('click', () => selectLocation(index));
     });
@@ -88,18 +278,24 @@ function renderLocationCards(events) {
 function selectLocation(index) {
     currentLocationIndex = index;
     
-    // Remove active class from all cards
+    // Remove active class from all cards (if in grid view)
     document.querySelectorAll('.location-card').forEach(card => {
         card.classList.remove('active');
     });
     
-    // Add active class to selected card
     const cards = document.querySelectorAll('.location-card');
     if (cards[index]) {
         cards[index].classList.add('active');
     }
     
-    // Load and display period details
+    // If in map view, fly to selected location
+    if (map) {
+        const event = getCurrentEvent();
+        if (event && event.location) {
+            map.flyTo([event.location.latitude, event.location.longitude], 8);
+        }
+    }
+    
     loadAndDisplayPeriod();
 }
 
@@ -233,11 +429,10 @@ function getPeriodTitle(periodKey) {
 }
 
 /**
- * Get current event from either API or local data
+ * Get current event from local data
  */
 function getCurrentEvent() {
-    const events = getLocalEvents();
-    return events[currentLocationIndex];
+    return getLocalEvents()[currentLocationIndex];
 }
 
 /**
@@ -257,7 +452,6 @@ function displayPeriodContent(periods, periodKey) {
     const panel = document.getElementById('details-panel');
     if (!panel) return;
     
-    // Use periods from parameter if provided, otherwise use current location's periods
     const eventPeriods = periods || getCurrentEvent().periods;
     
     const panelTitle = document.getElementById('panel-title');
@@ -300,21 +494,15 @@ function initTabNavigation() {
     
     tabs.forEach((tab, index) => {
         tab.addEventListener('click', () => {
-            // Get the period key from data attribute or use array index
             const periodKey = tab.dataset.period || ['ancient', 'medieval', 'modern'][index];
             
-            // Remove active from all tabs
             tabs.forEach(t => t.classList.remove('active'));
-            
-            // Add active to clicked tab
             tab.classList.add('active');
             
-            // Update current period and reload content
             currentPeriodKey = periodKey;
             loadAndDisplayPeriod();
         });
         
-        // Keyboard navigation support (arrow keys)
         tab.addEventListener('keydown', (e) => {
             const keyIndex = index;
             
@@ -322,22 +510,22 @@ function initTabNavigation() {
                 case 'ArrowRight':
                 case 'ArrowDown':
                     e.preventDefault();
-            const nextTab = tabs[(keyIndex + 1) % tabs.length];
-    if (nextTab) nextTab.click();
-    break;
+                    const nextTab = tabs[(keyIndex + 1) % tabs.length];
+                    if (nextTab) nextTab.click();
+                    break;
                 
                 case 'ArrowLeft':
                 case 'ArrowUp':
                     e.preventDefault();
-    const prevTab = tabs[(keyIndex - 1 + tabs.length) % tabs.length];
-    if (prevTab) prevTab.click();
-    break;
+                    const prevTab = tabs[(keyIndex - 1 + tabs.length) % tabs.length];
+                    if (prevTab) prevTab.click();
+                    break;
                     
                 case ' ':
                 case 'Enter':
                     e.preventDefault();
-    tab.click();
-    break;
+                    tab.click();
+                    break;
             }
         });
     });
