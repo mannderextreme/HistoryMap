@@ -5,3 +5,20 @@ backend.log
 
 # Node modules for frontend
 frontend/node_modules/
+
+# Python cache for backend
+backend/__pycache__/
+*.pyc
+__pycache__/
+
+# Build outputs
+frontend/build/
+backend/build/
+node_modules/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
