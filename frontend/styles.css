@@ -1,0 +1,218 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #eee;
+    min-height: 100vh;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    text-align: center;
+    padding: 30px 0;
+}
+
+header h1 {
+    font-size: 2.5rem;
+    color: #e94560;
+    margin-bottom: 10px;
+}
+
+header p {
+    color: #aaa;
+    font-size: 1.1rem;
+}
+
+main {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 20px;
+    min-height: calc(100vh - 200px);
+}
+
+.search-section input {
+    width: 100%;
+    padding: 15px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 1rem;
+    outline: none;
+    transition: background 0.3s;
+}
+
+.search-section input::placeholder {
+    color: #888;
+}
+
+.search-section input:focus {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.map-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.world-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 15px;
+}
+
+.location-card {
+    background: linear-gradient(145deg, #1e3a5f 0%, #162447 100%);
+    border-radius: 12px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.location-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(233, 69, 96, 0.3);
+    border-color: #e94560;
+}
+
+.location-card.active {
+    background: linear-gradient(145deg, #2d5a7f 0%, #2a3b5c 100%);
+    border-color: #e94560;
+}
+
+.location-card h3 {
+    color: #fff;
+    font-size: 1.2rem;
+    margin-bottom: 8px;
+}
+
+.period-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.period-badge {
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    border-radius: 12px;
+    background: rgba(233, 69, 96, 0.2);
+    color: #e94560;
+}
+
+.details-panel {
+    background: linear-gradient(145deg, #1e3a5f 0%, #162447 100%);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.details-panel h2 {
+    color: #e94560;
+    margin-bottom: 15px;
+    font-size: 1.3rem;
+}
+
+#period-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ccc;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.tab-btn:hover {
+    background: rgba(233, 69, 96, 0.2);
+    color: #fff;
+}
+
+.tab-btn.active {
+    background: #e94560;
+    color: white;
+}
+
+#period-content {
+    flex: 1;
+    overflow-y: auto;
+}
+
+#period-title {
+    font-size: 1.2rem;
+    color: #ccc;
+    margin-bottom: 15px;
+}
+
+#facts-list {
+    list-style: none;
+    padding: 0;
+}
+
+#facts-list li {
+    background: rgba(255, 255, 255, 0.05);
+    margin-bottom: 12px;
+    padding: 15px;
+    border-radius: 8px;
+    line-height: 1.6;
+}
+
+#facts-list li::before {
+    content: "📜 ";
+    margin-right: 8px;
+}
+
+footer {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+}
+
+/* Scrollbar styling */
+details-panel::-webkit-scrollbar,
+.map-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+details-panel::-webkit-scrollbar-track,
+.map-container::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+details-panel::-webkit-scrollbar-thumb,
+.map-container::-webkit-scrollbar-thumb {
+    background: rgba(233, 69, 96, 0.5);
+    border-radius: 4px;
+}
+
+/* Responsive design */
+@media (max-width: 1024px) {
+    main {
+        grid-template-columns: 1fr;
+    }
+    
+    header h1 {
+        font-size: 2rem;
+    }
+}

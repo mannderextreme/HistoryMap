@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# Node.js
+node_modules/
+
+# Logs - version control typically doesn't track logs
+*.log
+b.log
+backend.log
+
+# IDE settings
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build files
+build/
+dist/

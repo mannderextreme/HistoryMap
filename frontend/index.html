@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HistoryMaP - Historical Events Interactive Map</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🗺️ HistoryMaP</h1>
+            <p>Explore historical events by clicking on world locations</p>
+        </header>
+
+        <main>
+            <section class="search-section">
+                <input type="text" id="search-input" placeholder="Search for a location...">
+            </section>
+
+            <section class="map-container">
+                <div class="world-grid" id="world-grid">
+                    <!-- World map grid will be populated here -->
+                </div>
+            </section>
+
+            <aside class="details-panel" id="details-panel">
+                <h2 id="panel-title"></h2>
+                <div id="period-tabs">
+                    <button class="tab-btn" data-period="ancient">Ancient</button>
+                    <button class="tab-btn" data-period="medieval">Medieval</button>
+                    <button class="tab-btn" data-period="modern">Modern</button>
+                </div>
+                <div id="period-content">
+                    <h3 id="period-title"></h3>
+                    <ul id="facts-list"></ul>
+                </div>
+            </aside>
+        </main>
+
+        <footer>
+            <p>HistoryMaP &copy; 2026 - Interactive Historical Events Explorer</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

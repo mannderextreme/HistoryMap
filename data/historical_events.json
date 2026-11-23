@@ -1,0 +1,154 @@
+{
+  "events": [
+    {
+      "location": {"latitude": 51.5074, "longitude": -0.1278},
+      "name": "London, UK",
+      "periods": {
+        "ancient": {
+          "title": "Ancient Rome in Britain",
+          "facts": [
+            "In 43 AD, the Roman Empire conquered Britain under Emperor Claudius.",
+            "Londinium was founded by the Romans and became one of their major cities.",
+            "The London Wall built by Romans defined the city limits for over 1500 years."
+          ]
+        },
+        "medieval": {
+          "title": "Medieval Period",
+          "facts": [
+            "In 676, the Danes made peace with the English kingdom.",
+            "The Anglo-Saxon kings consolidated power in London during the 8th-9th centuries.",
+            "William the Conqueror was crowned King of England at Westminster Abbey in 1066."
+          ]
+        },
+        "modern": {
+          "title": "Modern Times",
+          "facts": [
+            "The Great Exhibition opened in Hyde Park in 1851, showcasing industrial innovation.",
+            "London hosted the first modern Olympic Games in 1908.",
+            "In 2012, London became the first city to host the Summer Olympics twice."
+          ]
+        }
+      }
+    },
+    {
+      "location": {"latitude": 48.8566, "longitude": 2.3522},
+      "name": "Paris, France",
+      "periods": {
+        "ancient": {
+          "title": "Gaul and Rome",
+          "facts": [
+            "Paris was originally called Lutetia by the Romans.",
+            "It was founded around 250 BC and became a major Roman trading center.",
+            "The city was conquered by Julius Caesar in 52 BC."
+          ]
+        },
+        "medieval": {
+          "title": "Medieval to Renaissance",
+          "facts": [
+            "In 843, the Treaty of Verdun established West Francia with Paris as capital.",
+            "Philip Augustus built a ring wall around Paris in the 12th century.",
+            "The Hundred Years' War (1337-1453) saw major conflicts centered on French territory."
+          ]
+        },
+        "modern": {
+          "title": "Modern France",
+          "facts": [
+            "The French Revolution began in Paris in 1789, ending the monarchy.",
+            "Napoleon Bonaparte crowned himself Emperor in Notre-Dame Cathedral in 1804.",
+            "Paris hosted a pivotal role in WWI and WWII as capital of France."
+          ]
+        }
+      }
+    },
+    {
+      "location": {"latitude": 35.6762, "longitude": 139.6503},
+      "name": "Tokyo, Japan",
+      "periods": {
+        "ancient": {
+          "title": "Ancient History",
+          "facts": [
+            "The area was originally part of the ancient province of Musashi.",
+            "In 1457, Ashikaga Yoshitane established Edo as a castle town.",
+            "The name 'Tokyo' means 'Eastern Capital' and was adopted in 1868."
+          ]
+        },
+        "medieval": {
+          "title": "Edo Period",
+          "facts": [
+            "In 1603, Tokugawa Ieyasu became Shogun and established the Edo domain.",
+            "Tokyo became the de facto capital under Tokugawa rule in 1868.",
+            "Japan implemented sakoku (closed country) policy with few foreign interactions."
+          ]
+        },
+        "modern": {
+          "title": "Modern Japan",
+          "facts": [
+            "Tokyo suffered massive destruction during WWII bombings and the 1945 atomic attacks.",
+            "In 1964, Tokyo hosted the Summer Olympics, signaling Japan's post-war recovery.",
+            "Japan became a technological powerhouse in the late 20th century."
+          ]
+        }
+      }
+    },
+    {
+      "location": {"latitude": 40.7128, "longitude": -74.006},
+      "name": "New York, USA",
+      "periods": {
+        "ancient": {
+          "title": "Indigenous Peoples",
+          "facts": [
+            "The area was inhabited by the Lenape people, part of Algonquian-speaking tribes.",
+            "The Native Americans called this region 'Mannahatta' meaning 'island of many hills'.",
+            "These indigenous peoples lived there for thousands of years before European contact."
+          ]
+        },
+        "medieval": {
+          "title": "European Colonization",
+          "facts": [
+            "In 1624, Dutch settlers established a trading post at Manhattan.",
+            "New Amsterdam was chartered in 1625 as part of New Netherland.",
+            "The British captured the colony in 1664 and renamed it New York."
+          ]
+        },
+        "modern": {
+          "title": "Modern America",
+          "facts": [
+            "In 1790, New York City became the first permanent capital of the United States.",
+            "The Statue of Liberty was dedicated in 1886 as a symbol of freedom.",
+            "New York's Stock Exchange has been central to global finance since 1792."
+          ]
+        }
+      }
+    },
+    {
+      "location": {"latitude": 52.5200, "longitude": 13.4050},
+      "name": "Berlin, Germany",
+      "periods": {
+        "ancient": {
+          "title": "Ancient Settlements",
+          "facts": [
+            "The area was inhabited by Slavic peoples and Celtic tribes before Roman times.",
+            "During the 1st century AD, the Romans reached parts of northern Germany.",
+            "Berlin's location on the Spree River made it strategically important."
+          ]
+        },
+        "medieval": {
+          "title": "Medieval Berlin",
+          "facts": [
+            "In 1237, Holy Roman Emperor Frederick II incorporated Brandenburg as a principality.",
+            "Berlin and Cölln merged in 1871 to form the modern city.",
+            "Prussia rose to prominence with Berlin as its capital during the medieval period."
+          ]
+        },
+        "modern": {
+          "title": "Modern Germany",
+          "facts": [
+            "In 1945, Soviet forces captured Berlin at the end of WWII.",
+            "The city was divided into East and West from 1949 to 1989 during the Cold War.",
+            "The Berlin Wall fell in 1989, symbolizing the end of division and beginning reunification."
+          ]
+        }
+      }
+    }
+  ]
+}
