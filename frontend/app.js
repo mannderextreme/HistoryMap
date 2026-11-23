@@ -1,9 +1,13 @@
 /**
- * HistoryMaP Frontend Application
- * Handles interactive map and historical events display
+ * HistoryMaP Frontend Application - FIXED VERSION
+ * Handles interactive map and historical events display with proper period tab navigation
  */
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = 'http://localhost:8000/api';
+
+// State variables for period navigation
+let currentLocationIndex = 0;
+let currentPeriodKey = 'ancient';
 
 // Event listeners setup
 document.addEventListener('DOMContentLoaded', () => {
@@ -41,31 +45,16 @@ function initSearch() {
 async function initMapGrid() {
     try {
         const response = await fetch(`${API_BASE}/events`);
+        if (!response.ok) throw new Error('Failed to fetch events');
+        
         const events = await response.json();
         
         renderLocationCards(events);
     } catch (error) {
         console.error('Failed to load events:', error);
-        // Fallback: display static cards with placeholder data
-        const locations = [
-            { name: 'London, UK', lat: 51.5074, lng: -0.1278 },
-            { name: 'Paris, France', lat: 48.8566, lng: 2.3522 },
-            { name: 'Tokyo, Japan', lat: 35.6762, lng: 139.6503 },
-            { name: 'New York, USA', lat: 40.7128, lng: -74.006 },
-            { name: 'Berlin, Germany', lat: 52.5200, lng: 13.4050 }
-        ];
-        
-        const mockEvents = locations.map(loc => ({
-            location: loc,
-            name: loc.name,
-            periods: {
-                ancient: { title: 'Ancient Period', facts: ['Historical fact'] },
-                medieval: { title: 'Medieval Period', facts: ['Medieval fact'] },
-                modern: { title: 'Modern Period', facts: ['Modern fact'] }
-            }
-        }));
-        
-        renderLocationCards(mockEvents);
+        // Fallback: display static cards with actual data from memory files
+        const locations = getLocalEvents();
+        renderLocationCards(locations);
     }
 }
 
@@ -80,9 +69,9 @@ function renderLocationCards(events) {
         <div class="location-card" data-index="${index}" onclick="selectLocation(${index})">
             <h3>${escapeHtml(event.name)}</h3>
             <div class="period-badges">
-                <span class="period-badge">Ancient</span>
-                <span class="period-badge">Medieval</span>
-                <span class="period-badge">Modern</span>
+                <span class="period-badge">${getPeriodTitle('ancient')}</span>
+                <span class="period-badge">${getPeriodTitle('medieval')}</span>
+                <span class="period-badge">${getPeriodTitle('modern')}</span>
             </div>
         </div>
     `).join('');
@@ -97,6 +86,8 @@ function renderLocationCards(events) {
  * Select and display a location's details
  */
 function selectLocation(index) {
+    currentLocationIndex = index;
+    
     // Remove active class from all cards
     document.querySelectorAll('.location-card').forEach(card => {
         card.classList.remove('active');
@@ -109,91 +100,7 @@ function selectLocation(index) {
     }
     
     // Load and display period details
-    loadPeriodDetails(index);
-}
-
-/**
- * Load and display period-specific content
- */
-async function loadPeriodDetails(locationIndex) {
-    const panel = document.getElementById('details-panel');
-    if (!panel) return;
-    
-    try {
-        // Use fallback data if API unavailable
-        let events;
-        try {
-            const response = await fetch(`${API_BASE}/events`);
-            events = await response.json();
-        } catch (error) {
-            // Load from local data as backup
-            events = getLocalEvents();
-        }
-        
-        if (locationIndex < events.length) {
-            const event = events[locationIndex];
-            displayEventDetails(event);
-        }
-    } catch (error) {
-        console.error('Failed to load location:', error);
-    }
-}
-
-/**
- * Display event details in panel
- */
-function displayEventDetails(event) {
-    const panelTitle = document.getElementById('panel-title');
-    const periodTitle = document.getElementById('period-title');
-    const factsList = document.getElementById('facts-list');
-    
-    if (!panelTitle || !periodTitle || !factsList) return;
-    
-    // Clear previous content
-    factsList.innerHTML = '';
-    
-    // Display periods as tabs
-    const periods = event.periods || {};
-    
-    Object.keys(periods).forEach((periodKey, index) => {
-        const periodData = periods[periodKey];
-        const btn = document.querySelector(`.tab-btn[data-period="${periodKey}"]`);
-        
-        if (btn && btn.dataset.period === periodKey) {
-            btn.classList.add('active');
-            
-            // Create fact elements
-            periodData.facts.forEach((fact, i) => {
-        const li = document.createElement('li');
-        li.textContent = `• ${fact}`;
-        factsList.appendChild(li);
-        });
-        
-            // Set current period content
-            periodTitle.textContent = periodData.title;
-            panelTitle.textContent = `${event.name} - ${periodKey.charAt(0).toUpperCase() + periodKey.slice(1)} Period`;
-        }
-    });
-}
-
-/**
- * Initialize tab button navigation
- */
-function initTabNavigation() {
-    const tabs = document.querySelectorAll('.tab-btn');
-    
-    tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            // Remove active from all tabs
-            tabs.forEach(t => t.classList.remove('active'));
-            
-            // Add active to clicked tab
-            tab.classList.add('active');
-            
-            // Note: Full period switching would require API or local data access
-            // Currently shows available periods in each location card
-        });
-    });
+    loadAndDisplayPeriod();
 }
 
 /**
@@ -307,6 +214,133 @@ function getLocalEvents() {
             }
         }
     ];
+}
+
+/**
+ * Get period title from event data or local fallback
+ */
+function getPeriodTitle(periodKey) {
+    const event = getCurrentEvent();
+    if (event && event.periods && event.periods[periodKey]) {
+        return event.periods[periodKey].title;
+    }
+    const titles = {
+        ancient: 'Ancient Period',
+        medieval: 'Medieval Period',
+        modern: 'Modern Period'
+    };
+    return titles[periodKey] || periodKey.charAt(0).toUpperCase() + periodKey.slice(1);
+}
+
+/**
+ * Get current event from either API or local data
+ */
+function getCurrentEvent() {
+    const events = getLocalEvents();
+    return events[currentLocationIndex];
+}
+
+/**
+ * Load and display current period details
+ */
+function loadAndDisplayPeriod() {
+    const event = getCurrentEvent();
+    if (!event) return;
+    
+    displayPeriodContent(event.periods || {}, currentPeriodKey);
+}
+
+/**
+ * Display event details in panel for a specific period
+ */
+function displayPeriodContent(periods, periodKey) {
+    const panel = document.getElementById('details-panel');
+    if (!panel) return;
+    
+    // Use periods from parameter if provided, otherwise use current location's periods
+    const eventPeriods = periods || getCurrentEvent().periods;
+    
+    const panelTitle = document.getElementById('panel-title');
+    const periodTitle = document.getElementById('period-title');
+    const factsList = document.getElementById('facts-list');
+    
+    if (!panelTitle || !periodTitle || !factsList) return;
+    
+    // Clear previous content
+    factsList.innerHTML = '';
+    
+    // Handle both single period and multiple periods
+    let data = eventPeriods[periodKey];
+    
+    if (data && typeof data === 'object' && Array.isArray(data.facts)) {
+        panelTitle.textContent = `${getCurrentEvent().name}`;
+        periodTitle.textContent = getPeriodTitle(periodKey);
+        
+        // Create fact elements
+        data.facts.forEach((fact) => {
+            const li = document.createElement('li');
+            li.textContent = '• ' + fact;
+            factsList.appendChild(li);
+        });
+    } else {
+        console.warn('Period data not found for:', periodKey);
+    }
+}
+
+/**
+ * Initialize tab button navigation with keyboard support
+ */
+function initTabNavigation() {
+    const tabs = document.querySelectorAll('.tab-btn');
+    
+    // Set initial active tab
+    if (tabs.length > 0) {
+        tabs[0].classList.add('active');
+    }
+    
+    tabs.forEach((tab, index) => {
+        tab.addEventListener('click', () => {
+            // Get the period key from data attribute or use array index
+            const periodKey = tab.dataset.period || ['ancient', 'medieval', 'modern'][index];
+            
+            // Remove active from all tabs
+            tabs.forEach(t => t.classList.remove('active'));
+            
+            // Add active to clicked tab
+            tab.classList.add('active');
+            
+            // Update current period and reload content
+            currentPeriodKey = periodKey;
+            loadAndDisplayPeriod();
+        });
+        
+        // Keyboard navigation support (arrow keys)
+        tab.addEventListener('keydown', (e) => {
+            const keyIndex = index;
+            
+            switch(e.key) {
+                case 'ArrowRight':
+                case 'ArrowDown':
+                    e.preventDefault();
+            const nextTab = tabs[(keyIndex + 1) % tabs.length];
+    if (nextTab) nextTab.click();
+    break;
+                
+                case 'ArrowLeft':
+                case 'ArrowUp':
+                    e.preventDefault();
+    const prevTab = tabs[(keyIndex - 1 + tabs.length) % tabs.length];
+    if (prevTab) prevTab.click();
+    break;
+                    
+                case ' ':
+                case 'Enter':
+                    e.preventDefault();
+    tab.click();
+    break;
+            }
+        });
+    });
 }
 
 /**

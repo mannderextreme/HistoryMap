@@ -1,23 +1,7 @@
-# Python
-__pycache__/
-*.py[cod]
-venv/
-.env
-
-# Node.js
-node_modules/
-
-# Logs - version control typically doesn't track logs
+# Ignore log files
 *.log
 b.log
 backend.log
 
-# IDE settings
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Build files
-build/
-dist/
+# Node modules for frontend
+frontend/node_modules/
