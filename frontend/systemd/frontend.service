@@ -1,0 +1,19 @@
+[Unit]
+Description=HistoryMap Frontend Express Server
+After=network.target
+
+[Service]
+Type=simple
+User=rene
+WorkingDirectory=/home/rene/git/HistoryMap/frontend
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/rene/git/HistoryMap/frontend/logs/frontend.log
+StandardError=append:/home/rene/git/HistoryMap/frontend/logs/frontend.log
+SyslogIdentifier=historymap-frontend
+# Lower OOM score to avoid being killed
+OOMScoreAdjust=-500
+
+[Install]
+WantedBy=multi-user.target

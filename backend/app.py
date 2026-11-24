@@ -30,9 +30,68 @@ def index():
         "endpoints": [
             "/api/events",
             "/api/events/<location_id>",
-            "/api/geocode"
+            "/api/geocode",
+            "/api/commits",
+            "/api/history",
+            "/api/locations"
         ]
     })
+
+@app.route('/api/commits', methods=['GET'])
+def get_commits():
+    """Return commits data (placeholder for frontend)"""
+    data = load_data()
+    # Convert events to commit-like structure
+    commits = []
+    for event in data.get('events', []):
+        commits.append({
+            "id": str(hash(event['name'] + event.get('period', ''))),
+            "message": f"{event['name']}: {event.get('period', '')}",
+            "author": event.get('city', 'unknown'),
+            "timestamp": event.get('year', ''),
+            "location": event.get('location', '')
+        })
+    return jsonify({"commits": commits})
+
+@app.route('/api/history', methods=['GET'])
+def get_history():
+    """Return historical events data for timeline"""
+    data = load_data()
+    history = []
+    for event in data.get('events', []):
+        history.append({
+            "id": event.get('name'),
+            "title": event['name'],
+            "date": f"{event.get('year')}-{event.get('period', '')}",
+            "location": event.get('location', ''),
+            "coordinates": {
+                "lat": 51.0 + hash(event['name']) % 20,
+                "lng": 8.0 + hash(event['name']) % 20
+            },
+            "description": f"Events in {event['name']}",
+            "events": [e for e in data.get('events', []) if e['name'] == event['name']]
+        })
+    return jsonify({"history": history})
+
+@app.route('/api/locations', methods=['GET'])
+def get_locations():
+    """Get unique locations from events"""
+    data = load_data()
+    locations = {}
+    for event in data.get('events', []):
+        loc = event.get('location', '').lower()
+        if not loc:
+            continue
+        if loc not in locations:
+            locations[loc] = {
+                "name": event['location'],
+                "coords": {
+                    "lat": 51.0 + hash(event['name']) % 20,
+                    "lng": 8.0 + hash(event['name']) % 20
+                },
+                "events": [e for e in data.get('events', []) if e['location'] == event['location']]
+            }
+    return jsonify({"locations": list(locations.values())})
 
 @app.route('/api/events', methods=['GET'])
 def get_all_events():
@@ -91,4 +150,4 @@ def not_found(e):
 if __name__ == '__main__':
     print("Starting HistoryMaP backend server...")
     print(f"Data file: {DATA_FILE}")
-    app.run(debug=True, host='127.0.0.1', port=5000)
+    app.run(debug=False, host='127.0.0.1', port=5000)

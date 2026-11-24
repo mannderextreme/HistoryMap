@@ -1,0 +1,19 @@
+[Unit]
+Description=HistoryMap Backend Flask API Server
+After=network.target
+
+[Service]
+Type=simple
+User=rene
+WorkingDirectory=/home/rene/git/HistoryMap/backend
+ExecStart=/usr/bin/python3 app.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/rene/git/HistoryMap/backend/logs/backend.log
+StandardError=append:/home/rene/git/HistoryMap/backend/logs/backend.log
+SyslogIdentifier=historymap-backend
+# Lower OOM score to avoid being killed
+OOMScoreAdjust=-500
+
+[Install]
+WantedBy=multi-user.target
