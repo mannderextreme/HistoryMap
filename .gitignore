@@ -22,3 +22,9 @@ node_modules/
 *.swp
 *.swo
 *~
+
+# Runtime artifacts (server logs, pid files, output)
+logs/
+*.pid
+backend/logs/
+frontend/logs/

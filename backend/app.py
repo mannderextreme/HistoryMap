@@ -16,9 +16,9 @@ DATA_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'historical_ev
 def load_data():
     """Load historical events from JSON file"""
     try:
-        with DATA_FILE as f:
+        with open(DATA_FILE) as f:
             return json.load(f)
-    except FileNotFoundError:
+    except (FileNotFoundError, PermissionError):
         return {"events": []}
 
 @app.route('/')
