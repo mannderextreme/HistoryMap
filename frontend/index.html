@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="HistoryMaP - Explore historical events on an interactive world map">
     <title>HistoryMaP - Historical Events Interactive Map</title>
-    
+
     <!-- Leaflet.js CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <link rel="stylesheet" href="styles.css">
@@ -13,33 +14,38 @@
     <div class="container">
         <header>
             <h1>🗺️ HistoryMaP</h1>
-            <p>Explore historical events by clicking on world locations</p>
+            <p>Explore historical events on an interactive world map</p>
         </header>
 
         <main>
-            <section class="search-section">
-                <input type="text" id="search-input" placeholder="Search for a location...">
+            <section class="search-section" aria-label="Search locations">
+                <input type="text" id="search-input" placeholder="Search for a location..." aria-label="Search for a location" autocomplete="off">
             </section>
 
-            <section class="map-container">
-                <!-- Leaflet map will be rendered here -->
-                <div id="world-map"></div>
-                
-                <!-- Keep grid as fallback/alternative view -->
-                <div class="location-cards-fallback" id="location-cards">
-                    <!-- Cards will be populated by JavaScript -->
+            <section class="map-container" aria-label="Map and location cards">
+                <div class="map-stage">
+                    <div id="world-map" role="img" aria-label="Interactive world map showing locations of historical events"></div>
+                    <div id="map-status" class="map-status map-status--loading" role="status" aria-live="polite">
+                        <div class="map-status__inner">
+                            <div class="map-status__spinner" aria-hidden="true"></div>
+                            <p id="map-status-message">Loading events…</p>
+                            <button id="map-retry" type="button" class="map-status__retry" hidden>Retry</button>
+                        </div>
+                    </div>
                 </div>
+
+                <div class="location-cards" id="location-cards" aria-label="Location cards"></div>
             </section>
 
-            <aside class="details-panel" id="details-panel">
-                <h2 id="panel-title"></h2>
-                <div id="period-tabs">
-                    <button class="tab-btn" data-period="ancient">Ancient</button>
-                    <button class="tab-btn" data-period="medieval">Medieval</button>
-                    <button class="tab-btn" data-period="modern">Modern</button>
+            <aside class="details-panel" id="details-panel" aria-label="Event details">
+                <h2 id="panel-title">Select a location</h2>
+                <div id="period-tabs" aria-label="Historical periods">
+                    <button type="button" class="tab-btn" data-period="ancient" aria-current="true">Ancient</button>
+                    <button type="button" class="tab-btn" data-period="medieval" aria-current="false">Medieval</button>
+                    <button type="button" class="tab-btn" data-period="modern" aria-current="false">Modern</button>
                 </div>
                 <div id="period-content">
-                    <h3 id="period-title"></h3>
+                    <h3 id="period-title">Click a marker or a card to view historical details.</h3>
                     <ul id="facts-list"></ul>
                 </div>
             </aside>
@@ -50,7 +56,7 @@
         </footer>
     </div>
 
-    <!-- Leaflet.js JS -->
+    <!-- Leaflet.js JavaScript -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="app.js"></script>
 </body>

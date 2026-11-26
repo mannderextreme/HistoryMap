@@ -38,53 +38,143 @@ main {
     grid-template-columns: 2fr 1fr;
     gap: 20px;
     min-height: calc(100vh - 200px);
+    align-items: start;
+}
+
+.search-section {
+    grid-column: 1 / -1;
 }
 
 .search-section input {
     width: 100%;
     padding: 15px;
-    border: none;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.08);
     color: #fff;
     font-size: 1rem;
     outline: none;
-    transition: background 0.3s;
+    transition: border-color 0.3s, background 0.3s;
 }
 
-.search-section input::placeholder {
-    color: #888;
-}
+.search-section input::placeholder { color: #888; }
 
 .search-section input:focus {
-    background: rgba(255, 255, 255, 0.15);
+    border-color: #e94560;
+    background: rgba(255, 255, 255, 0.13);
 }
 
+/* --- Map stage (Leaflet map + overlay) --- */
 .map-container {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 16px;
+    min-width: 0;
 }
 
-.world-grid {
+.map-stage {
+    position: relative;
+    height: clamp(380px, 62vh, 640px);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+#world-map {
+    width: 100%;
+    height: 100%;
+    background: #101830; /* dark theme while tiles load */
+}
+
+.map-status {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(16, 24, 48, 0.86);
+    backdrop-filter: blur(3px);
+    z-index: 1000;
+    text-align: center;
+    padding: 20px;
+}
+
+.map-status.is-hidden { display: none; }
+
+.map-status__inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    max-width: 360px;
+}
+
+.map-status__spinner {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 3px solid rgba(233, 69, 96, 0.25);
+    border-top-color: #e94560;
+    animation: map-spin 0.9s linear infinite;
+}
+
+@keyframes map-spin { to { transform: rotate(360deg); } }
+
+.map-status--loading #map-status-message { color: #bbb; }
+.map-status--error #map-status-message { color: #ff9aa8; }
+.map-status--error .map-status__spinner { display: none; }
+
+#map-status-message {
+    font-size: 1rem;
+    line-height: 1.5;
+    color: #ddd;
+}
+
+.map-status__retry {
+    padding: 10px 22px;
+    border: none;
+    border-radius: 8px;
+    background: #e94560;
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.map-status__retry[hidden] { display: none; }
+
+.map-status__retry:hover { background: #c93752; }
+
+/* --- Location cards --- */
+.location-cards {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 15px;
+    gap: 12px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 2px;
 }
 
 .location-card {
     background: linear-gradient(145deg, #1e3a5f 0%, #162447 100%);
     border-radius: 12px;
-    padding: 20px;
+    padding: 18px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
     border: 2px solid transparent;
 }
 
 .location-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 30px rgba(233, 69, 96, 0.3);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 30px rgba(233, 69, 96, 0.25);
     border-color: #e94560;
+}
+
+.location-card:focus-visible {
+    outline: 2px solid #e94560;
+    outline-offset: 2px;
 }
 
 .location-card.active {
@@ -94,8 +184,9 @@ main {
 
 .location-card h3 {
     color: #fff;
-    font-size: 1.2rem;
+    font-size: 1.1rem;
     margin-bottom: 8px;
+    line-height: 1.3;
 }
 
 .period-badges {
@@ -109,21 +200,51 @@ main {
     padding: 3px 8px;
     border-radius: 12px;
     background: rgba(233, 69, 96, 0.2);
-    color: #e94560;
+    color: #ff8da0;
 }
 
+.cards-empty {
+    grid-column: 1 / -1;
+    padding: 18px;
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    color: #bbb;
+    text-align: center;
+    line-height: 1.6;
+}
+
+.cards-empty__retry {
+    grid-column: 1 / -1;
+    justify-self: center;
+    padding: 8px 18px;
+    border: none;
+    border-radius: 8px;
+    background: #e94560;
+    color: #fff;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.cards-empty__retry:hover { background: #c93752; }
+
+/* --- Details panel --- */
 .details-panel {
     background: linear-gradient(145deg, #1e3a5f 0%, #162447 100%);
     border-radius: 12px;
     padding: 20px;
     display: flex;
     flex-direction: column;
+    max-height: 640px;
+    min-width: 0;
 }
 
 .details-panel h2 {
     color: #e94560;
     margin-bottom: 15px;
     font-size: 1.3rem;
+    line-height: 1.3;
+    word-break: break-word;
 }
 
 #period-tabs {
@@ -143,7 +264,7 @@ main {
     transition: all 0.3s;
 }
 
-.tab-btn:hover {
+.tab-btn:hover:not(:disabled) {
     background: rgba(233, 69, 96, 0.2);
     color: #fff;
 }
@@ -153,15 +274,27 @@ main {
     color: white;
 }
 
+.tab-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.tab-btn:focus-visible {
+    outline: 2px solid #e94560;
+    outline-offset: 2px;
+}
+
 #period-content {
     flex: 1;
     overflow-y: auto;
+    min-height: 0;
 }
 
 #period-title {
     font-size: 1.2rem;
     color: #ccc;
     margin-bottom: 15px;
+    line-height: 1.4;
 }
 
 #facts-list {
@@ -189,30 +322,75 @@ footer {
 }
 
 /* Scrollbar styling */
-details-panel::-webkit-scrollbar,
-.map-container::-webkit-scrollbar {
+#period-content::-webkit-scrollbar,
+.location-cards::-webkit-scrollbar {
     width: 8px;
 }
 
-details-panel::-webkit-scrollbar-track,
-.map-container::-webkit-scrollbar-track {
+#period-content::-webkit-scrollbar-track,
+.location-cards::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 4px;
 }
 
-details-panel::-webkit-scrollbar-thumb,
-.map-container::-webkit-scrollbar-thumb {
+#period-content::-webkit-scrollbar-thumb,
+.location-cards::-webkit-scrollbar-thumb {
     background: rgba(233, 69, 96, 0.5);
     border-radius: 4px;
 }
 
-/* Responsive design */
+/* --- Leaflet dark-theme overrides --- */
+.leaflet-container {
+    background: #101830;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.leaflet-bar a,
+.leaflet-bar a:hover {
+    background: rgba(30, 58, 95, 0.92);
+    color: #eee;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.leaflet-control-attribution {
+    background: rgba(16, 24, 48, 0.78) !important;
+    color: #888 !important;
+    font-size: 11px;
+}
+
+.leaflet-control-attribution a { color: #aaa !important; }
+
+.map-tooltip {
+    background: rgba(16, 24, 48, 0.92);
+    color: #eee;
+    border: 1px solid rgba(233, 69, 96, 0.5);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.map-tooltip::before { display: none; }
+
+/* --- Responsive --- */
 @media (max-width: 1024px) {
     main {
         grid-template-columns: 1fr;
     }
-    
-    header h1 {
-        font-size: 2rem;
-    }
+
+    header h1 { font-size: 2rem; }
+
+    .map-stage { height: clamp(320px, 56vh, 480px); }
+
+    .details-panel { max-height: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .map-status__spinner { animation: none; }
+    .location-card:hover { transform: none; }
+}
+
+:focus-visible {
+    outline: 2px solid #e94560;
+    outline-offset: 2px;
 }

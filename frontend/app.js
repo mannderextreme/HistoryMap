@@ -1,541 +1,490 @@
-/**
- * HistoryMaP Frontend Application - MAP VERSION
- * Enhanced with Leaflet.js world map and historical events display
+/*
+ * HistoryMaP - application logic
+ *
+ * Data flow:
+ *   /api/events (via the local proxy) -> normalize -> validate coords
+ *   -> render markers + cards -> select event -> render panel
+ *
+ * The app never fabricates data. If the request fails, the UI shows an
+ * honest error state with a Retry button. If Leaflet fails to load (e.g.
+ * offline), the card grid still works - only the map itself is unavailable
+ * and the UI says so.
  */
+'use strict';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = (typeof window !== 'undefined' && window.location && window.location.protocol.startsWith('http'))
+    ? '/api'
+    : 'http://localhost:5000/api';
 
-// State variables
-let currentLocationIndex = 0;
-let currentPeriodKey = 'ancient';
-let map, mapMarker, mapBounds;
-let locations = [];
-let isMapView = true; // Start in map view by default
+const WORLD_CENTER = [22, 10];
+const WORLD_ZOOM = 2;
 
-// Event listeners setup
-document.addEventListener('DOMContentLoaded', () => {
-    initSearch();
-    initMap();
-    initTabNavigation();
-    loadAndDisplayPeriod();
-});
+const PERIODS = ['ancient', 'medieval', 'modern'];
 
-/**
- * Initialize search functionality
- */
-function initSearch() {
-    const searchInput = document.getElementById('search-input');
-    
-    if (!searchInput) return;
-    
-    searchInput.addEventListener('input', async (e) => {
-        const query = e.target.value.toLowerCase();
-        
-        if (!query) {
-            // Show all locations on clear
-            await displayAllLocations();
-            return;
-        }
-        
-        // Filter locations by name
-        const filtered = locations.filter(loc => 
-            loc.name.toLowerCase().includes(query)
-        );
-        
-        if (filtered.length > 0) {
-            // Center map on first match and show in cards too
-            updateMapView(filtered[0], filtered);
-            displayLocationCards(filtered);
-        } else {
-            document.getElementById('facts-list').innerHTML = 
-                '<li class="no-results">No locations found matching "' + escapeHtml(query) + '"</li>';
-            document.querySelectorAll('.location-card').forEach(card => {
-                card.style.display = 'none';
-            });
-        }
-    });
+/* ----------------------------------------------------------------
+ * Pure helpers (also exported for headless testing)
+ * ---------------------------------------------------------------- */
+
+function normalizeEvent(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+    if (!name) return null;
+
+    const loc = (raw.location && typeof raw.location === 'object') ? raw.location : {};
+    const lat = Number(loc.latitude);
+    const lng = Number(loc.longitude);
+    const hasCoords = Number.isFinite(lat) && Number.isFinite(lng)
+        && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+
+    const periods = {};
+    const rawPeriods = (raw.periods && typeof raw.periods === 'object') ? raw.periods : {};
+    for (const key of PERIODS) {
+        const p = rawPeriods[key];
+        if (!p || typeof p !== 'object') continue;
+        const facts = Array.isArray(p.facts)
+            ? p.facts.map((f) => String(f).trim()).filter(Boolean)
+            : [];
+        const title = typeof p.title === 'string' ? p.title.trim() : '';
+        if (title || facts.length) periods[key] = { title, facts };
+    }
+
+    return { name, latitude: hasCoords ? lat : null, longitude: hasCoords ? lng : null, hasCoords, periods };
 }
 
-/**
- * Initialize Leaflet map
- */
-function initMap() {
-    try {
-        // Check if window.L is available (Leaflet loaded)
-        if (!window.L) {
-            console.error('Leaflet.js not loaded');
-            showGridFallback();
-            return;
-        }
-        
-        // Create map centered on world
-        const defaultCenter = [48, 10];
-        const defaultZoom = 3;
-        
-        map = L.map('world-map', {
-            center: defaultCenter,
-            zoom: defaultZoom,
-            zoomControl: true,
-            scrollWheelZoom: true,
-            doubleClickZoom: false,
-            dragging: true,
-            attributionControl: true
-        });
-        
-        // Add OpenStreetMap tile layer
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map);
-        
-        // Set initial bounds to show all locations
-        updateMapView(getLocalEvents()[0], getLocalEvents());
-        
-    } catch (error) {
-        console.error('Failed to initialize map:', error);
-        showGridFallback();
+/* Accept the backend's array response or an { events: [...] } envelope. */
+function parseEventsPayload(json) {
+    const list = Array.isArray(json)
+        ? json
+        : (json && Array.isArray(json.events)) ? json.events : null;
+    if (!list) return null;
+    const normalized = [];
+    for (const raw of list) {
+        const ev = normalizeEvent(raw);
+        if (ev) normalized.push(ev);
+    }
+    return normalized;
+}
+
+function pickInitialPeriod(periods, preferred) {
+    if (!periods) return 'ancient';
+    if (preferred && periods[preferred]) return preferred;
+    if (periods.ancient) return 'ancient';
+    return Object.keys(periods)[0] || 'ancient';
+}
+
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+}
+
+function capitalize(word) {
+    return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+/* ----------------------------------------------------------------
+ * App state
+ * ---------------------------------------------------------------- */
+let events = [];
+let markers = [];
+let selectedIndex = -1;
+let currentPeriod = 'ancient';
+let map = null;
+let searchQuery = '';
+let els = {};
+
+/* ----------------------------------------------------------------
+ * DOM setup
+ * ---------------------------------------------------------------- */
+
+function isBrowser() {
+    return typeof window !== 'undefined' && typeof document !== 'undefined' && typeof window.fetch === 'function';
+}
+
+function cacheDom() {
+    const byId = (id) => document.getElementById(id);
+    els = {
+        mapEl: byId('world-map'),
+        status: byId('map-status'),
+        statusMessage: byId('map-status-message'),
+        retryBtn: byId('map-retry'),
+        cards: byId('location-cards'),
+        searchInput: byId('search-input'),
+        panelTitle: byId('panel-title'),
+        periodTitle: byId('period-title'),
+        factsList: byId('facts-list'),
+        tabButtons: Array.from(document.querySelectorAll('.tab-btn')),
+    };
+}
+
+/* ----------------------------------------------------------------
+ * Status overlay (loading / error / hidden)
+ * ---------------------------------------------------------------- */
+
+function setStatus(state, message) {
+    const el = els.status;
+    if (!el) return;
+    el.classList.remove('map-status--loading', 'map-status--error', 'is-hidden');
+    const msg = els.statusMessage;
+    const retry = els.retryBtn;
+    if (state === 'loading') {
+        el.classList.add('map-status--loading');
+        if (msg) msg.textContent = message || 'Loading events…';
+        if (retry) retry.hidden = true;
+    } else if (state === 'error') {
+        el.classList.add('map-status--error');
+        if (msg) msg.textContent = message || 'Something went wrong.';
+        if (retry) retry.hidden = false;
+    } else {
+        el.classList.add('is-hidden');
+        if (retry) retry.hidden = true;
     }
 }
 
-/**
- * Update map view with location markers
- */
-async function updateMapView(location, allLocations) {
-    if (!map) {
-        console.warn('Map not initialized');
+/* ----------------------------------------------------------------
+ * Leaflet map
+ * ---------------------------------------------------------------- */
+
+function leafletAvailable() {
+    return typeof L !== 'undefined' && L && typeof L.map === 'function';
+}
+
+function ensureMap() {
+    if (map || !leafletAvailable()) return map;
+    if (!els.mapEl) return null;
+    map = L.map(els.mapEl, {
+        center: WORLD_CENTER,
+        zoom: WORLD_ZOOM,
+        minZoom: 1,
+        maxZoom: 10,
+        worldCopyJump: true,
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 18,
+    }).addTo(map);
+    return map;
+}
+
+function clearMarkers() {
+    if (!map) return;
+    for (const m of markers) map.removeLayer(m);
+    markers = [];
+}
+
+function flyTo(latlng, zoom) {
+    if (!map) return;
+    try {
+        map.setView(latlng, zoom || 5, { animate: true });
+    } catch (_) {
+        map.setView(latlng, zoom || 5);
+    }
+}
+
+function addMarkers() {
+    if (!map) return;
+    clearMarkers();
+    const coords = [];
+    events.forEach((ev, i) => {
+        if (!ev.hasCoords) return;
+        const latlng = [ev.latitude, ev.longitude];
+        const m = L.circleMarker(latlng, {
+            radius: 7,
+            color: '#e94560',
+            fillColor: '#ff8da0',
+            fillOpacity: 0.9,
+            weight: 2,
+        }).addTo(map);
+        m.bindTooltip(escapeHtml(ev.name), { direction: 'top', offset: [0, -6], className: 'map-tooltip' });
+        m.on('click', () => selectEvent(i));
+        markers.push(m);
+        coords.push(latlng);
+    });
+    if (coords.length) {
+        try { map.fitBounds(L.latLngBounds(coords).pad(0.35)); } catch (_) { /* leave current view */ }
+    }
+}
+
+/* ----------------------------------------------------------------
+ * Data loading
+ * ---------------------------------------------------------------- */
+
+async function fetchEvents() {
+    const res = await fetch(`${API_BASE}/events`, { cache: 'no-store' });
+    if (!res.ok) {
+        let detail = res.statusText;
+        try {
+            const body = await res.json();
+            if (body && body.error) detail = body.error;
+        } catch (_) { /* leave detail */ }
+        throw new Error(`Request failed (${res.status})${detail ? `: ${detail}` : ''}`);
+    }
+    return res.json();
+}
+
+async function loadEvents() {
+    setStatus('loading');
+    clearPanel();
+    els.cards.innerHTML = '';
+    try {
+        const json = await fetchEvents();
+        const normalized = parseEventsPayload(json);
+        if (!normalized) throw new Error('Unexpected response format from /api/events');
+        events = normalized;
+
+        renderCards();
+
+        const mapReady = !!ensureMap();
+        if (mapReady) {
+            addMarkers();
+            // Give the layout a beat before resizing so tiles render correctly.
+            requestAnimationFrame(() => { if (map) map.invalidateSize(); });
+            setStatus('hidden');
+        } else {
+            // Map unavailable (e.g. offline, CDN blocked) - cards still work.
+            setStatus('error', 'Interactive map unavailable (the Leaflet map needs network access). Use the location cards below - they work offline.');
+        }
+
+        const firstVisible = events.findIndex((ev) => matchesSearch(ev));
+        if (firstVisible >= 0) selectEvent(firstVisible, { fly: false });
+    } catch (err) {
+        events = [];
+        clearMarkers();
+        els.cards.innerHTML = '';
+        renderEmptyCards();
+        setStatus('error', err.message || 'Failed to load events.');
+    }
+}
+
+/* ----------------------------------------------------------------
+ * Cards
+ * ---------------------------------------------------------------- */
+
+function matchesSearch(ev) {
+    if (!searchQuery) return true;
+    return ev.name.toLowerCase().includes(searchQuery);
+}
+
+function renderCards() {
+    const visible = events.map((ev, i) => ({ ev, i })).filter(({ ev }) => matchesSearch(ev));
+    if (!visible.length) {
+        renderEmptyCards();
         return;
     }
-    
-    // Clear existing marker
-    if (mapMarker) {
-        map.removeLayer(mapMarker);
-    }
-    
-    const locData = location || getLocalEvents()[0] || {};
-    const lat = locData.location?.latitude || 48;
-    const lng = locData.location?.longitude || 10;
-    
-    // Add marker with location info
-    mapMarker = L.marker([lat, lng])
-        .addTo(map)
-        .bindPopup(`<b>${escapeHtml(locData.name)}</b><br>Historical events explorer`)
-        .openPopup();
-    
-    // Fly to location
-    map.flyTo([lat, lng], 6, {
-        animate: true,
-        duration: 1.5
-    });
-    
-    // Store locations for card display fallback
-    locations = allLocations || getLocalEvents();
-    
-    // Display cards below map (optional)
-    displayLocationCards(locations);
-}
+    els.cards.innerHTML = '';
+    for (const { ev, i } of visible) {
+        const hasCoords = ev.hasCoords;
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'location-card' + (i === selectedIndex ? ' active' : '');
+        card.dataset.index = String(i);
+        card.setAttribute('aria-label', `${ev.name}${hasCoords ? '' : ' (no coordinates)'}`);
 
-/**
- * Display all locations on map when search is cleared
- */
-async function displayAllLocations() {
-    if (!map) return;
-    
-    locations = await fetchLocationsFromAPI();
-    const event = getCurrentEvent();
-    
-    // Clear marker and fly to selected location
-    if (mapMarker) {
-        map.removeLayer(mapMarker);
-        mapMarker = null;
-    }
-    
-    mapBounds = L.latLngBounds(locations.map(loc => loc.location));
-    map.fitBounds(mapBounds, { padding: [50, 50] });
-    
-    // Add markers for all locations
-    locations.forEach((loc, index) => {
-        const marker = L.marker([loc.location.latitude, loc.location.longitude])
-            .addTo(map)
-            .bindPopup(`
-                <b>${escapeHtml(loc.name)}</b><br>
-                Click to select this location.
-            `)
-            .on('click', () => {
-                map.flyTo([loc.location.latitude, loc.location.longitude], 6);
-                currentLocationIndex = index;
-                loadAndDisplayPeriod();
-            });
-    });
-}
+        const h3 = document.createElement('h3');
+        h3.textContent = ev.name;
+        card.appendChild(h3);
 
-/**
- * Show grid fallback if map fails to initialize
- */
-function showGridFallback() {
-    const mapContainer = document.getElementById('world-map');
-    const cardsContainer = document.getElementById('location-cards');
-    
-    if (mapContainer) {
-        mapContainer.innerHTML = '<div class="world-grid" id="world-grid"></div>';
-    }
-    
-    if (cardsContainer) {
-        cardsContainer.id = 'world-grid';
-        // Use original grid rendering
-        const events = getLocalEvents();
-        renderLocationCards(events);
-    }
-}
-
-/**
- * Fetch locations from API with geographical data
- */
-async function fetchLocationsFromAPI() {
-    try {
-        const response = await fetch(`${API_BASE}/events`);
-        if (!response.ok) throw new Error('Failed to fetch events');
-        
-        const events = await response.json();
-        return extractLocationData(events);
-    } catch (error) {
-        console.error('API fallback:', error);
-        return getLocalEvents();
-    }
-}
-
-/**
- * Extract geographical data from API response
- */
-function extractLocationData(events) {
-    // Map API response to location objects with coordinates
-    return events.map(event => ({
-        name: event.name,
-        location: event.location || { latitude: 48, longitude: 10 },
-        periods: event.periods || {}
-    }));
-}
-
-/**
- * Render original grid cards as fallback
- */
-function renderLocationCards(events) {
-    const grid = document.getElementById('world-grid') || 
-                   document.getElementById('location-cards');
-    
-    if (!grid) return;
-    
-    // Hide map section when in grid view
-    const mapContainer = document.getElementById('world-map');
-    if (mapContainer && map) {
-        map.remove();
-        map = null;
-    }
-    
-    grid.innerHTML = events.map((event, index) => `
-        <div class="location-card" data-index="${index}" onclick="selectLocation(${index})">
-            <h3>${escapeHtml(event.name)}</h3>
-            <div class="period-badges">
-                <span class="period-badge">${getPeriodTitle('ancient')}</span>
-                <span class="period-badge">${getPeriodTitle('medieval')}</span>
-                <span class="period-badge">${getPeriodTitle('modern')}</span>
-            </div>
-        </div>
-    `).join('');
-    
-    document.querySelectorAll('.location-card').forEach((card, index) => {
-        card.addEventListener('click', () => selectLocation(index));
-    });
-}
-
-/**
- * Display location cards below map
- */
-function displayLocationCards(locationsToDisplay) {
-    const cardsContainer = document.getElementById('world-grid') || 
-                          document.getElementById('location-cards');
-    
-    if (!cardsContainer) return;
-    
-    cardsContainer.innerHTML = locationsToDisplay.map((event, index) => `
-        <div class="location-card" data-index="${index}" onclick="selectLocation(${index})">
-            <h3>${escapeHtml(event.name)}</h3>
-            <div class="period-badges">
-                <span class="period-badge">${getPeriodTitle('ancient')}</span>
-                <span class="period-badge">${getPeriodTitle('medieval')}</span>
-                <span class="period-badge">${getPeriodTitle('modern')}</span>
-            </div>
-        </div>
-    `).join('');
-    
-    document.querySelectorAll('.location-card').forEach((card, index) => {
-        card.addEventListener('click', () => selectLocation(index));
-    });
-}
-
-/**
- * Select and display a location's details
- */
-function selectLocation(index) {
-    currentLocationIndex = index;
-    
-    // Remove active class from all cards (if in grid view)
-    document.querySelectorAll('.location-card').forEach(card => {
-        card.classList.remove('active');
-    });
-    
-    const cards = document.querySelectorAll('.location-card');
-    if (cards[index]) {
-        cards[index].classList.add('active');
-    }
-    
-    // If in map view, fly to selected location
-    if (map) {
-        const event = getCurrentEvent();
-        if (event && event.location) {
-            map.flyTo([event.location.latitude, event.location.longitude], 8);
-        }
-    }
-    
-    loadAndDisplayPeriod();
-}
-
-/**
- * Get local event data as fallback
- */
-function getLocalEvents() {
-    return [
-        {
-            name: 'London, UK',
-            location: { latitude: 51.5074, longitude: -0.1278 },
-            periods: {
-                ancient: { title: 'Ancient Rome in Britain', facts: [
-                    'In 43 AD, the Roman Empire conquered Britain under Emperor Claudius.',
-                    'Londinium was founded by the Romans and became one of their major cities.',
-                    'The London Wall built by Romans defined the city limits for over 1500 years.'
-                ]},
-                medieval: { title: 'Medieval Period', facts: [
-                    'In 676, the Danes made peace with the English kingdom.',
-                    'The Anglo-Saxon kings consolidated power in London during the 8th-9th centuries.',
-                    'William the Conqueror was crowned King of England at Westminster Abbey in 1066.'
-                ]},
-                modern: { title: 'Modern Times', facts: [
-                    'The Great Exhibition opened in Hyde Park in 1851, showcasing industrial innovation.',
-                    'London hosted the first modern Olympic Games in 1908.',
-                    'In 2012, London became the first city to host the Summer Olympics twice.'
-                ]}
-            }
-        },
-        {
-            name: 'Paris, France',
-            location: { latitude: 48.8566, longitude: 2.3522 },
-            periods: {
-                ancient: { title: 'Gaul and Rome', facts: [
-                    'Paris was originally called Lutetia by the Romans.',
-                    'It was founded around 250 BC and became a major Roman trading center.',
-                    'The city was conquered by Julius Caesar in 52 BC.'
-                ]},
-                medieval: { title: 'Medieval to Renaissance', facts: [
-                    'In 843, the Treaty of Verdun established West Francia with Paris as capital.',
-                    'Philip Augustus built a ring wall around Paris in the 12th century.',
-                    'The Hundred Years\' War (1337-1453) saw major conflicts centered on French territory.'
-                ]},
-                modern: { title: 'Modern France', facts: [
-                    'The French Revolution began in Paris in 1789, ending the monarchy.',
-                    'Napoleon Bonaparte crowned himself Emperor in Notre-Dame Cathedral in 1804.',
-                    'Paris hosted a pivotal role in WWI and WWII as capital of France.'
-                ]}
-            }
-        },
-        {
-            name: 'Tokyo, Japan',
-            location: { latitude: 35.6762, longitude: 139.6503 },
-            periods: {
-                ancient: { title: 'Ancient History', facts: [
-                    'The area was originally part of the ancient province of Musashi.',
-                    'In 1457, Ashikaga Yoshitane established Edo as a castle town.',
-                    'The name \'Tokyo\' means \'Eastern Capital\' and was adopted in 1868.'
-                ]},
-                medieval: { title: 'Edo Period', facts: [
-                    'In 1603, Tokugawa Ieyasu became Shogun and established the Edo domain.',
-                    'Tokyo became the de facto capital under Tokugawa rule in 1868.',
-                    "Japan implemented sakoku (closed country) policy with few foreign interactions."
-                ]},
-                modern: { title: 'Modern Japan', facts: [
-                    'Tokyo suffered massive destruction during WWII bombings and the 1945 atomic attacks.',
-                    'In 1964, Tokyo hosted the Summer Olympics, signaling Japan\'s post-war recovery.',
-                    "Japan became a technological powerhouse in the late 20th century."
-                ]}
-            }
-        },
-        {
-            name: 'New York, USA',
-            location: { latitude: 40.7128, longitude: -74.006 },
-            periods: {
-                ancient: { title: 'Indigenous Peoples', facts: [
-                    "The area was inhabited by the Lenape people, part of Algonquian-speaking tribes.",
-                    'The Native Americans called this region \'Mannahatta\' meaning \'island of many hills\'.',
-                    'These indigenous peoples lived there for thousands of years before European contact.'
-                ]},
-                medieval: { title: 'European Colonization', facts: [
-                    'In 1624, Dutch settlers established a trading post at Manhattan.',
-                    'New Amsterdam was chartered in 1625 as part of New Netherland.',
-                    "The British captured the colony in 1664 and renamed it New York."
-                ]},
-                modern: { title: 'Modern America', facts: [
-                    'In 1790, New York City became the first permanent capital of the United States.',
-                    'The Statue of Liberty was dedicated in 1886 as a symbol of freedom.',
-                    "New York's Stock Exchange has been central to global finance since 1792."
-                ]}
-            }
-        },
-        {
-            name: 'Berlin, Germany',
-            location: { latitude: 52.5200, longitude: 13.4050 },
-            periods: {
-                ancient: { title: 'Ancient Settlements', facts: [
-                    'The area was inhabited by Slavic peoples and Celtic tribes before Roman times.',
-                    "During the 1st century AD, the Romans reached parts of northern Germany.",
-                    "Berlin's location on the Spree River made it strategically important."
-                ]},
-                medieval: { title: 'Medieval Berlin', facts: [
-                    'In 1237, Holy Roman Emperor Frederick II incorporated Brandenburg as a principality.',
-                    'Berlin and Cölln merged in 1871 to form the modern city.',
-                    'Prussia rose to prominence with Berlin as its capital during the medieval period.'
-                ]},
-                modern: { title: 'Modern Germany', facts: [
-                    'In 1945, Soviet forces captured Berlin at the end of WWII.',
-                    "The city was divided into East and West from 1949 to 1989 during the Cold War.",
-                    'The Berlin Wall fell in 1989, symbolizing the end of division and beginning reunification.'
-                ]}
+        const badges = document.createElement('div');
+        badges.className = 'period-badges';
+        for (const key of PERIODS) {
+            if (ev.periods[key]) {
+                const badge = document.createElement('span');
+                badge.className = 'period-badge';
+                badge.textContent = capitalize(key);
+                badges.appendChild(badge);
             }
         }
-    ];
-}
+        if (!badges.children.length) {
+            const none = document.createElement('span');
+            none.className = 'period-badge';
+            none.textContent = 'No period data';
+            badges.appendChild(none);
+        }
+        card.appendChild(badges);
 
-/**
- * Get period title from event data or local fallback
- */
-function getPeriodTitle(periodKey) {
-    const event = getCurrentEvent();
-    if (event && event.periods && event.periods[periodKey]) {
-        return event.periods[periodKey].title;
+        card.addEventListener('click', () => selectEvent(i));
+        els.cards.appendChild(card);
     }
-    const titles = {
-        ancient: 'Ancient Period',
-        medieval: 'Medieval Period',
-        modern: 'Modern Period'
-    };
-    return titles[periodKey] || periodKey.charAt(0).toUpperCase() + periodKey.slice(1);
+    syncActiveCard();
 }
 
-/**
- * Get current event from local data
- */
-function getCurrentEvent() {
-    return getLocalEvents()[currentLocationIndex];
-}
-
-/**
- * Load and display current period details
- */
-function loadAndDisplayPeriod() {
-    const event = getCurrentEvent();
-    if (!event) return;
-    
-    displayPeriodContent(event.periods || {}, currentPeriodKey);
-}
-
-/**
- * Display event details in panel for a specific period
- */
-function displayPeriodContent(periods, periodKey) {
-    const panel = document.getElementById('details-panel');
-    if (!panel) return;
-    
-    const eventPeriods = periods || getCurrentEvent().periods;
-    
-    const panelTitle = document.getElementById('panel-title');
-    const periodTitle = document.getElementById('period-title');
-    const factsList = document.getElementById('facts-list');
-    
-    if (!panelTitle || !periodTitle || !factsList) return;
-    
-    // Clear previous content
-    factsList.innerHTML = '';
-    
-    // Handle both single period and multiple periods
-    let data = eventPeriods[periodKey];
-    
-    if (data && typeof data === 'object' && Array.isArray(data.facts)) {
-        panelTitle.textContent = `${getCurrentEvent().name}`;
-        periodTitle.textContent = getPeriodTitle(periodKey);
-        
-        // Create fact elements
-        data.facts.forEach((fact) => {
-            const li = document.createElement('li');
-            li.textContent = '• ' + fact;
-            factsList.appendChild(li);
-        });
+function renderEmptyCards() {
+    els.cards.innerHTML = '';
+    const empty = document.createElement('div');
+    empty.className = 'cards-empty';
+    if (!events.length) {
+        empty.textContent = 'No historical events are available. Try the Retry button above if the server was just started.';
     } else {
-        console.warn('Period data not found for:', periodKey);
+        empty.textContent = `No locations match “${searchQuery}”.`;
+    }
+    els.cards.appendChild(empty);
+    if (!events.length) {
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'cards-empty__retry';
+        retry.textContent = 'Retry';
+        retry.addEventListener('click', loadEvents);
+        els.cards.appendChild(retry);
     }
 }
 
-/**
- * Initialize tab button navigation with keyboard support
- */
-function initTabNavigation() {
-    const tabs = document.querySelectorAll('.tab-btn');
-    
-    // Set initial active tab
-    if (tabs.length > 0) {
-        tabs[0].classList.add('active');
-    }
-    
-    tabs.forEach((tab, index) => {
-        tab.addEventListener('click', () => {
-            const periodKey = tab.dataset.period || ['ancient', 'medieval', 'modern'][index];
-            
-            tabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            
-            currentPeriodKey = periodKey;
-            loadAndDisplayPeriod();
-        });
-        
-        tab.addEventListener('keydown', (e) => {
-            const keyIndex = index;
-            
-            switch(e.key) {
-                case 'ArrowRight':
-                case 'ArrowDown':
-                    e.preventDefault();
-                    const nextTab = tabs[(keyIndex + 1) % tabs.length];
-                    if (nextTab) nextTab.click();
-                    break;
-                
-                case 'ArrowLeft':
-                case 'ArrowUp':
-                    e.preventDefault();
-                    const prevTab = tabs[(keyIndex - 1 + tabs.length) % tabs.length];
-                    if (prevTab) prevTab.click();
-                    break;
-                    
-                case ' ':
-                case 'Enter':
-                    e.preventDefault();
-                    tab.click();
-                    break;
-            }
-        });
+function syncActiveCard() {
+    const cards = els.cards.querySelectorAll('.location-card');
+    cards.forEach((card) => {
+        card.classList.toggle('active', Number(card.dataset.index) === selectedIndex);
     });
 }
 
-/**
- * Escape HTML to prevent XSS attacks
- */
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+/* ----------------------------------------------------------------
+ * Selection + panel
+ * ---------------------------------------------------------------- */
+
+function resetPanel() {
+    els.panelTitle.textContent = 'Select a location';
+    els.periodTitle.textContent = loadingOrSelectText();
+    els.factsList.innerHTML = '';
+    for (const btn of els.tabButtons) {
+        btn.classList.remove('active');
+        btn.setAttribute('aria-current', 'false');
+        btn.disabled = true;
+    }
+}
+
+function loadingOrSelectText() {
+    return events.length ? 'Click a marker or a card to view historical details.' : 'Waiting for events…';
+}
+
+function clearPanel() {
+    resetPanel();
+}
+
+function renderPanel() {
+    const ev = selectedIndex >= 0 ? events[selectedIndex] : null;
+    if (!ev) {
+        resetPanel();
+        return;
+    }
+    els.panelTitle.textContent = ev.name;
+
+    const periodKeys = PERIODS.filter((k) => ev.periods[k]);
+    // currentPeriod must point at a period that exists for this event.
+    if (!ev.periods[currentPeriod]) {
+        currentPeriod = periodKeys[0] || currentPeriod;
+    }
+    for (const btn of els.tabButtons) {
+        const key = btn.dataset.period;
+        const available = !!ev.periods[key];
+        btn.disabled = !available;
+        const active = key === currentPeriod && available;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-current', active ? 'true' : 'false');
+    }
+
+    const period = ev.periods[currentPeriod];
+    if (!period) {
+        // No periods recorded for this event at all.
+        els.periodTitle.textContent = 'No historical period data recorded for this location.';
+        els.factsList.innerHTML = '';
+        return;
+    }
+
+    els.periodTitle.textContent = period.title || `${capitalize(currentPeriod)} period`;
+    els.factsList.innerHTML = '';
+    for (const fact of period.facts) {
+        const li = document.createElement('li');
+        li.textContent = fact;
+        els.factsList.appendChild(li);
+    }
+    if (!period.facts.length) {
+        const li = document.createElement('li');
+        li.textContent = 'No factual details recorded for this period.';
+        els.factsList.appendChild(li);
+    }
+}
+
+function selectEvent(index, opts = {}) {
+    const { fly = true } = opts;
+    if (index < 0 || index >= events.length) return;
+    selectedIndex = index;
+    const ev = events[index];
+    currentPeriod = pickInitialPeriod(ev.periods, currentPeriod);
+
+    renderPanel();
+    syncActiveCard();
+
+    if (fly && ev.hasCoords) flyTo([ev.latitude, ev.longitude], 5);
+
+    const activeCard = els.cards.querySelector(`.location-card[data-index="${index}"]`);
+    if (activeCard && typeof activeCard.scrollIntoView === 'function') {
+        activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+}
+
+/* ----------------------------------------------------------------
+ * Search
+ * ---------------------------------------------------------------- */
+
+function onSearchInput(value) {
+    searchQuery = value.trim().toLowerCase();
+    renderCards();
+    // Keep the panel honest with the visible selection.
+    const visible = events.map((ev, i) => ({ ev, i })).filter(({ ev }) => matchesSearch(ev));
+    if (visible.length && selectedIndex >= 0 && !matchesSearch(events[selectedIndex])) {
+        selectEvent(visible[0].i, { fly: false });
+    }
+}
+
+/* ----------------------------------------------------------------
+ * Init
+ * ---------------------------------------------------------------- */
+
+function init() {
+    cacheDom();
+    if (!els.mapEl || !els.cards || !els.searchInput || !els.panelTitle || !els.periodTitle || !els.factsList || !els.tabButtons.length) {
+        console.error('HistoryMaP: required DOM elements are missing.');
+        return;
+    }
+
+    if (els.retryBtn) els.retryBtn.addEventListener('click', loadEvents);
+    els.searchInput.addEventListener('input', (e) => onSearchInput(e.target.value));
+
+    for (const btn of els.tabButtons) {
+        btn.addEventListener('click', () => {
+            if (btn.disabled) return;
+            currentPeriod = btn.dataset.period;
+            renderPanel();
+        });
+    }
+
+    // Keyboard: Escape clears search.
+    els.searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            els.searchInput.value = '';
+            onSearchInput('');
+        }
+    });
+
+    setStatus('loading');
+    clearPanel();
+    loadEvents();
+}
+
+if (isBrowser()) {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+}
+
+/* Export for headless testing (no-ops in the browser). */
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        normalizeEvent,
+        parseEventsPayload,
+        pickInitialPeriod,
+        escapeHtml,
+        capitalize,
+        PERIODS,
+    };
 }
