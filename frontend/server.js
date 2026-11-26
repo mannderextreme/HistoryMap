@@ -40,6 +40,20 @@ app.get('/api/history', async (req, res) => {
   }
 });
 
+// API endpoint to get all events data (the data the app actually renders)
+app.get('/api/events', async (req, res) => {
+  try {
+    const response = await fetch(`${backendUrl}/api/events`);
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Backend not available' });
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // API endpoint to get all location data
 app.get('/api/locations', async (req, res) => {
   try {
@@ -72,5 +86,5 @@ app.get('/api/locations', async (req, res) => {
 app.listen(port, '0.0.0.0', () => {
   console.log(`🗺️ HistoryMaP Frontend Server running on http://localhost:${port}`);
   console.log('🔄 Auto-reload enabled for frontend code changes');
-  console.log('📡 API endpoints connected to backend at http://localhost:8000');
+  console.log(`📡 API endpoints connected to backend at ${backendUrl}`);
 });
